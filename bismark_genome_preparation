@@ -147,7 +147,8 @@ sub launch_bowtie_indexer{
     $verbose and print "$path_to_bowtie -f $file_list BS_CT\n\n";
 
     system ("$path_to_bowtie","-f","$file_list","BS_CT") == 0 or die "Parent process: Failed to build index.";
-    waitpid( $pid, 0 ) >> 8 == 0 or die "Parent process: Child failed.";
+    waitpid( $pid, 0 );
+    $? == 0 or die "Parent process: Child failed.";
   }
 
   # child process
