@@ -24,7 +24,7 @@ use Getopt::Long;
 
 
 my $parent_dir = getcwd;
-my $bismark_version = 'v0.14.3';
+my $bismark_version = 'v0.14.4';
 my $command_line = join (" ",@ARGV);
 
 
@@ -179,13 +179,14 @@ sub subset_input_file_FastA{
   # warn "offset is $offset\n";
   my $temp = $filename;
   $temp .= ".temp.$offset";
+  $temp =~ s/^.*\///; # replacing everything upto and including the last /, i.e. removing file path information
 
   if ($gzip){
     $temp .= '.gz';
-    open (TEMPFQ,"| gzip -c - > ${temp_dir}${temp}") or die "Can't write to file ${temp_dir}${temp}: $!\n";
+    open (TEMPFA,"| gzip -c - > ${temp_dir}${temp}") or die "Can't write to file ${temp_dir}${temp}: $!\n";
   }
   else{
-    open (TEMPFQ,'>',"${temp_dir}${temp}") or die "Failed to write output ${temp_dir}${temp}: $!\n";
+    open (TEMPFA,'>',"${temp_dir}${temp}") or die "Failed to write output ${temp_dir}${temp}: $!\n";
   }
 
   warn "Writing temporary infile to $temp\n";
@@ -203,7 +204,7 @@ sub subset_input_file_FastA{
       # warn "line count: $line_count\noffset: $offset\n";
       # warn "Modulus: ",($line_count - $offset)%$multicore,"\n";
       # warn "processing this line $line_count (processID: $process_id with \$offset $offset)\n";
-      print TEMPFQ "$l1$l2";
+      print TEMPFA "$l1$l2";
     }
     else{
       # warn "skipping line $line_count for processID: $process_id with \$offset $offset)\n";
@@ -212,7 +213,7 @@ sub subset_input_file_FastA{
   }
 
   close OFFSET or warn $!;
-  close TEMPFQ or warn "Failed to close file handle TEMPFQ: $!\n";
+  close TEMPFA or warn "Failed to close file handle TEMPFQ: $!\n";
 
   warn "Finished subdividing $filename for PID: $process_id and offset $offset\n\n";
 
@@ -761,11 +762,11 @@ foreach my $filename (@filenames){
 
       ### Merging the Bismark mapping report files
       if ($single_end){
-	merge_individual_splitting_reports(\@temp_reports,$original_filename,$single_end);
+	merge_individual_mapping_reports(\@temp_reports,$original_filename,$single_end);
 	print_final_analysis_report_single_end('mock_file1','mock_file_2','mock_pid','mergeThis');
       }
       else{
-	merge_individual_splitting_reports(\@temp_reports,$original_filename_1,$single_end,$original_filename_2);
+	merge_individual_mapping_reports(\@temp_reports,$original_filename_1,$single_end,$original_filename_2);
 	print_final_analysis_report_paired_ends('mock_file1','mock_file_2','mock_file3','mock_file_4','mock_pid','mergeThis');
       }
 
@@ -787,7 +788,7 @@ foreach my $filename (@filenames){
 
 }
 
-sub merge_individual_splitting_reports{
+sub merge_individual_mapping_reports{
 
   my ($temp_reports,$original_filename_1,$single_end,$original_filename_2) = @_;
   my $report_file = $original_filename_1;
@@ -1372,7 +1373,13 @@ sub start_methylation_call_procedure_single_ends {
       }
     }
 
-    open (UNMAPPED,'>',"$output_dir$unmapped_file") or die "Failed to write to $unmapped_file: $!\n";
+    if ($multicore > 1){ # multicore runs already output gzipped unmapped files
+      open (UNMAPPED,'>',"$output_dir$unmapped_file") or die "Failed to write to $unmapped_file: $!\n";
+    }
+    else{
+      $unmapped_file .= '.gz';
+      open (UNMAPPED,"| gzip -c - > $output_dir$unmapped_file") or die "Failed to write to $unmapped_file: $!\n";
+    }
     warn "Unmapped sequences will be written to $output_dir$unmapped_file\n";
   }
 
@@ -1399,7 +1406,14 @@ sub start_methylation_call_procedure_single_ends {
 	$ambiguous_file =~ s/$/_ambiguous_reads.fa/;
       }
     }
-    open (AMBIG,'>',"$output_dir$ambiguous_file") or die "Failed to write to $ambiguous_file: $!\n";
+
+    if ($multicore > 1){ # multicore runs already output gzipped amobiguous files
+      open (AMBIG,'>',"$output_dir$ambiguous_file") or die "Failed to write to $ambiguous_file: $!\n";
+    }
+    else{
+      $ambiguous_file .= '.gz';
+      open (AMBIG,"| gzip -c - > $output_dir$ambiguous_file") or die "Failed to write to $ambiguous_file: $!\n";
+    }
     warn "Ambiguously mapping sequences will be written to $output_dir$ambiguous_file\n";
   }
 
@@ -1563,9 +1577,17 @@ sub start_methylation_call_procedure_paired_ends {
       }
     }
 
-    open (UNMAPPED_1,'>',"$output_dir$unmapped_1") or die "Failed to write to $unmapped_1: $!\n";
-    open (UNMAPPED_2,'>',"$output_dir$unmapped_2") or die "Failed to write to $unmapped_2: $!\n";
-    print "Unmapped sequences will be written to $unmapped_1 and $unmapped_2\n";
+    if ($multicore > 1){ # unmapped files are merged into .gz files in multicore runs anyway
+      open (UNMAPPED_1,'>',"$output_dir$unmapped_1") or die "Failed to write to $unmapped_1: $!\n";
+      open (UNMAPPED_2,'>',"$output_dir$unmapped_2") or die "Failed to write to $unmapped_2: $!\n";
+    }
+    else{
+      $unmapped_1 .= '.gz';
+      $unmapped_2 .= '.gz';
+      open (UNMAPPED_1,"| gzip -c - > $output_dir$unmapped_1") or die "Failed to write to $unmapped_1: $!\n";
+      open (UNMAPPED_2,"| gzip -c - > $output_dir$unmapped_2") or die "Failed to write to $unmapped_2: $!\n";
+    }
+    warn "Unmapped sequences will be written to $unmapped_1 and $unmapped_2\n";
   }
 
   if ($ambiguous){
@@ -1597,10 +1619,18 @@ sub start_methylation_call_procedure_paired_ends {
 	$amb_2 =~ s/$/_ambiguous_reads_2.fa/;
       }
     }
- 
-    open (AMBIG_1,'>',"$output_dir$amb_1") or die "Failed to write to $amb_1: $!\n";
-    open (AMBIG_2,'>',"$output_dir$amb_2") or die "Failed to write to $amb_2: $!\n";
-    print "Ambiguously mapping sequences will be written to $amb_1 and $amb_2\n";
+
+    if ($multicore > 1){ # ambiguous files are merged into .gz files in multicore runs anyway
+      open (AMBIG_1,'>',"$output_dir$amb_1") or die "Failed to write to $amb_1: $!\n";
+      open (AMBIG_2,'>',"$output_dir$amb_2") or die "Failed to write to $amb_2: $!\n";
+    }
+    else{
+      $amb_1 .= '.gz';
+      $amb_2 .= '.gz';
+      open (AMBIG_1,"| gzip -c - > $output_dir$amb_1") or die "Failed to write to $amb_1: $!\n";
+      open (AMBIG_2,"| gzip -c - > $output_dir$amb_2") or die "Failed to write to $amb_2: $!\n";
+    }
+    warn "Ambiguously mapping sequences will be written to $amb_1 and $amb_2\n";
   }
 
   if ($directional){
@@ -2387,7 +2417,7 @@ sub process_fastQ_files_for_paired_end_methylation_calls{
 
   warn "Processed $counting{sequences_count} sequences in total\n\n";
 
-  close OUT or die $!;
+  close OUT or warn "Failed to close filehandle OUT: $!\n\n";
 
   print_final_analysis_report_paired_ends($C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2,$pid);
 
@@ -7305,6 +7335,7 @@ sub process_command_line{
   my $basename;
   my $sam;
   my $multicore;
+  my $bowtie1;
 
   my $command_line = GetOptions ('help|man'                => \$help,
 				 '1=s'                     => \$mates1,
@@ -7331,6 +7362,7 @@ sub process_command_line{
 				 'ambiguous'               => \$multi_map,
 				 'o|output_dir=s'          => \$output_dir,
 				 'bowtie2'                 => \$bowtie2,
+				 'bowtie1'                 => \$bowtie1,
 				 'vanilla'                 => \$vanilla,
 				 'sam-no-hd'               => \$sam_no_hd,
 				 'D=i'                     => \$seed_extension_fails,
@@ -7369,7 +7401,7 @@ sub process_command_line{
 
           Bismark - Bisulfite Mapper and Methylation Caller.
 
-                       Bismark Version: $bismark_version 
+                       Bismark Version: $bismark_version
         Copyright 2010-15 Felix Krueger, Babraham Bioinformatics
               www.bioinformatics.babraham.ac.uk/projects/
 
@@ -7383,9 +7415,13 @@ VERSION
   ### PROCESSING OPTIONS ###
   ##########################
 
-  unless ($bowtie2){
+  if ($bowtie1){
     $bowtie2 = 0;
   }
+  else{ # Bowtie 2 is now the default mode (as of 27 July 2015)
+    $bowtie2 = 1;
+  }
+
   unless ($sam_no_hd){
     $sam_no_hd =0;
   }
@@ -7961,7 +7997,7 @@ VERSION
     $directional = 1; # default behaviour
   }
 
-  ### UNMAPPED SEQUENCE OUTPUT
+  ### UNMAPPEDSEQUENCE OUTPUT
   $unmapped = 0 unless ($unmapped);
 
   ### AMBIGUOUS ALIGNMENT SEQUENCE OUTPUT
@@ -8461,12 +8497,14 @@ sub paired_end_SAM_output{
   my $flag_1;                                                            # FLAG variable used for SAM format
   my $flag_2;
 
-  ### The new default FLAG values have been suggested by Peter Hickey, Australia
+  ### The new default FLAG values were changed on 21 07 2015, so that reads do not ignored as discordant reads by the new SeqMonk BAM import
+  ### In essence we are going to flip the R1 R2 flags around for CTOT and CTOB reads. We still report the first and second read in the same
+  ### order and only change the actual FLAG value. This should not affect the methylation extraction in any way
 
   if ($index == 0){       # OT
     unless ($old_flag){
-      $flag_1 = 99;                                                      # PH: Read 1 is on the + strand and Read 2 is reversed  (1+2+32+64)
-      $flag_2 = 147;                                                     # PH: Read 2 is on - strand but informative for the OT  (1+2+16+128)
+      $flag_1 = 99;                                                      # Read 1 is on the + strand and Read 2 is reversed  (1+2+32+64)
+      $flag_2 = 147;                                                     # Read 2 is reverse complemented but informative for the OT  (1+2+16+128)
     }
     else{
       $flag_1 = 67;                                                      # Read 1 is on the + strand  (1+2+64) (Read 2 is technically reverse-complemented, but we do not score it)
@@ -8475,8 +8513,10 @@ sub paired_end_SAM_output{
   }
   elsif ($index == 1){    # CTOB
     unless($old_flag){
-      $flag_1 = 83;                                                      # PH: Read 1 is on the - strand, mapped in proper pair and Read 1 is reversed  (1+2+16+64)
-      $flag_2 = 163;                                                     # PH: read 2 is on the - strand, mapped in proper pair and Read 1 is reversed  (1+2+32+128)
+      $flag_1 = 163;                                                     # Read 1 is on the forward strand (CTOB) and Read 2 is reverse complemented but we swap round the FLAG
+                                                                         # for R1 and R2 so that we don't end up with discordant pairs
+                                                                         # So Read 1 gets Paired read, mapped in proper pair, mate is reversed and second in pair  (1+2+32+128)
+      $flag_2 = 83;                                                      # Read 2 gets Read paired, mapped in proper pair, first in pair and Read 2 is reversed  (1+2+16+64)
     }
     else{
       $flag_1 = 115;                                                     # Read 1 is on the + strand, we score for OB  (1+2+16+32+64)
@@ -8485,8 +8525,10 @@ sub paired_end_SAM_output{
   }
   elsif ($index == 2){    # CTOT
     unless ($old_flag){
-      $flag_1 = 99;                                                      # PH: Read 1 is on the + strand and Read 2 is reversed  (1+2+32+64)
-      $flag_2 = 147;                                                     # PH: Read 2 is on - strand but informative for the OT  (1+2+16+128)
+      $flag_1 = 147;                                                     # Read 1 is reverse complemented (CTOT) and Read 2 is the forward read
+                                                                         # but we swap round the FLAG for R1 and R2 so that we do not end up with discordant pairs
+                                                                         # So Read 1 gets Read paired, read mapped in proper pair, read reverse complemented and second in pair (1+2+32+128)
+      $flag_2 = 99;                                                      # Read 2 gets Read paired, read mapped in proper pair, mate reverse strand and First in Pair (1+2+32+64)
     }
     else{
       $flag_1 = 67;                                                      # Read 1 is on the - strand (CTOT) strand, but we score it for OT (1+2+64)
@@ -8495,8 +8537,8 @@ sub paired_end_SAM_output{
   }
   elsif ($index == 3){    # OB
     unless ($old_flag){
-      $flag_1 = 83;                                                      # PH: Read 1 is on the - strand, mapped in proper pair and Read 1 is reversed  (1+2+16+64)
-      $flag_2 = 163;                                                     # PH: read 2 is on the - strand, mapped in proper pair and Read 1 is reversed  (1+2+32+128)
+      $flag_1 = 83;                                                      # Read 1 is on the - strand, mapped in proper pair and Read 1 is reversed  (1+2+16+64)
+      $flag_2 = 163;                                                     # Read 2 is on the - strand, mapped in proper pair and Read 1 is reversed  (1+2+32+128)
     }
     else{
       $flag_1 = 115;                                                     # Read 1 is on the - strand, we score for OB  (1+2+16+32+64)
@@ -9444,7 +9486,7 @@ Output:
                          example, '--prefix test' with 'file.fq' would result in the output file 'test.file.fq_bismark.sam' etc.
 
 -B/--basename <basename> Write all output to files starting with this base file name. For example, '--basename foo'
-                         would result in the files 'foo.sam' and 'foo_SE_report.txt' (or its paired-end equivalent). Takes
+                         would result in the files 'foo.bam' and 'foo_SE_report.txt' (or its paired-end equivalent). Takes
                          precedence over --prefix.
 
 --old_flag               Only in paired-end SAM mode, uses the FLAG values used by Bismark v0.8.2 and before. In addition,
@@ -9461,9 +9503,9 @@ Output:
 
                               OB:         83          163                 115          179
 
-                              CTOT:       99          147                  67          131
+                              CTOT:      147           99                  67          131
 
-                              CTOB:       83          163                 115          179
+                              CTOB:      163           83                 115          179
 
 
 Other:
@@ -9475,11 +9517,15 @@ Other:
 
 BOWTIE 2 SPECIFIC OPTIONS
 
---bowtie2                Uses Bowtie 2 instead of Bowtie 1. Bismark limits Bowtie 2 to only perform end-to-end
+--bowtie1                Uses Bowtie 1 instead of Bowtie 2, which might be a good choice for faster and very short
+                         alignments. Bismark assumes that raw sequence data is adapter and/or quality trimmed where
+                         appropriate. Default: off.
+
+--bowtie2                Default: ON. Uses Bowtie 2 instead of Bowtie 1. Bismark limits Bowtie 2 to only perform end-to-end
                          alignments, i.e. searches for alignments involving all read characters (also called 
                          untrimmed or unclipped alignments). Bismark assumes that raw sequence data is adapter
                          and/or quality trimmed where appropriate. Both small (.bt2) and large (.bt2l) Bowtie 2
-                         indexes are supported. Default: off.
+                         indexes are supported.
 
 Bowtie 2 alignment options:
 
@@ -9630,7 +9676,7 @@ Bismark SAM OUTPUT (default):
 Each read of paired-end alignments is written out in a separate line in the above format.
 
 
-Last edited on 06 May 2015.
+Last edited on 27 July 2015.
 
 HOW_TO
 }
