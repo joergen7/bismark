@@ -8,7 +8,7 @@ and error reporting.
 
 ## Deprecation Warning
 
-Bismark has moved to GitHub as of November 2015. So there is an [official Bismark repository](FelixKrueger/Bismark) now. The current official Bismark release incorporates all changes I made. Please ignore this branch.
+Bismark has moved to GitHub as of November 2015. So there is an [official Bismark repository](https://github.com/FelixKrueger/Bismark) now. The current official Bismark release incorporates all changes I made. Please ignore this branch.
 
 ## Changelog
 
